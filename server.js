@@ -13,9 +13,10 @@ const app = express();
 
 // Seguridad: Content Security Policy.
 // Solo permitimos cargar scripts y CSS desde nuestro propio servidor ('self').
-// El frontend de este proyecto no depende de ningún CDN externo
-// (jQuery, Bootstrap, etc.), por lo que una política estricta no rompe
-// la funcionalidad de la página.
+// Se incluyen también imgSrc y connectSrc explícitos en 'self' para que
+// ningún recurso (imágenes, favicons, llamadas fetch) intente cargarse
+// desde un dominio externo, lo cual también violaría el espíritu del
+// requisito aunque no sea estrictamente script/CSS.
 app.use(
   helmet({
     contentSecurityPolicy: {
@@ -23,6 +24,8 @@ app.use(
         defaultSrc: ["'self'"],
         scriptSrc: ["'self'"],
         styleSrc: ["'self'"],
+        imgSrc: ["'self'"],
+        connectSrc: ["'self'"],
       },
     },
   })

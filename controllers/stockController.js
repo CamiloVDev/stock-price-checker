@@ -1,7 +1,6 @@
 'use strict';
 
 const crypto = require('crypto');
-const https = require('https');
 const stockStore = require('../models/stockStore');
 
 const PROXY_BASE =
@@ -34,34 +33,36 @@ function getClientIp(req) {
 /**
  * Llama al proxy de freeCodeCamp para obtener el precio actual de un símbolo.
  * Devuelve { symbol, price } o lanza un error si el símbolo es inválido.
+ * Usa fetch nativo (Node 18+) con timeout explícito para evitar que una
+ * respuesta lenta del proxy cuelgue las pruebas funcionales.
  */
-function fetchStockQuote(symbol) {
-  return new Promise((resolve, reject) => {
-    const url = `${PROXY_BASE}${encodeURIComponent(symbol)}/quote`;
+async function fetchStockQuote(symbol) {
+  const url = `${PROXY_BASE}${encodeURIComponent(symbol.toLowerCase())}/quote`;
 
-    https
-      .get(url, (res) => {
-        let raw = '';
-        res.on('data', (chunk) => (raw += chunk));
-        res.on('end', () => {
-          try {
-            const data = JSON.parse(raw);
-            // El proxy devuelve { symbol, latestPrice, ... } en caso válido,
-            // o un objeto sin esos campos / con error si el símbolo no existe.
-            if (!data || typeof data.latestPrice !== 'number' || !data.symbol) {
-              return reject(new Error('invalid symbol'));
-            }
-            resolve({
-              symbol: data.symbol,
-              price: data.latestPrice,
-            });
-          } catch (err) {
-            reject(new Error('invalid symbol'));
-          }
-        });
-      })
-      .on('error', () => reject(new Error('proxy request failed')));
-  });
+  let res;
+  try {
+    res = await fetch(url, { signal: AbortSignal.timeout(8000) });
+  } catch (err) {
+    throw new Error('proxy request failed');
+  }
+
+  let data;
+  try {
+    data = await res.json();
+  } catch (err) {
+    throw new Error('invalid symbol');
+  }
+
+  // El proxy devuelve { symbol, latestPrice, ... } en caso válido,
+  // o un objeto sin esos campos / con "error" si el símbolo no existe.
+  if (!data || typeof data.latestPrice !== 'number' || !data.symbol) {
+    throw new Error('invalid symbol');
+  }
+
+  return {
+    symbol: data.symbol,
+    price: data.latestPrice,
+  };
 }
 
 /**
@@ -141,6 +142,7 @@ async function handleStockPricesRequest(req, res) {
     const stockData = await buildSingleStockData(stock, anonIp, shouldLike);
     return res.json({ stockData });
   } catch (err) {
+    console.error('[stock-prices] error:', err.message);
     return res.status(400).json({ error: err.message || 'invalid symbol' });
   }
 }

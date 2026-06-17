@@ -2,6 +2,9 @@
 	"name": "boilerplate-project-stockchecker",
 	"version": "0.0.1",
 	"description": "InfoSec project for freeCodeCamp",
+	"engines": {
+		"node": ">=18.0.0"
+	},
 	"scripts": {
 		"start": "node server.js",
 		"test": "mocha tests --ui tdd --exit"
