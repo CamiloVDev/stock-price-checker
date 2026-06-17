@@ -43,6 +43,7 @@ async function fetchStockQuote(symbol) {
   try {
     res = await fetch(url, { signal: AbortSignal.timeout(8000) });
   } catch (err) {
+    console.error(`[fetchStockQuote] network error for ${symbol}:`, err.message);
     throw new Error('proxy request failed');
   }
 
@@ -50,12 +51,14 @@ async function fetchStockQuote(symbol) {
   try {
     data = await res.json();
   } catch (err) {
+    console.error(`[fetchStockQuote] JSON parse error for ${symbol}:`, err.message);
     throw new Error('invalid symbol');
   }
 
   // El proxy devuelve { symbol, latestPrice, ... } en caso válido,
   // o un objeto sin esos campos / con "error" si el símbolo no existe.
   if (!data || typeof data.latestPrice !== 'number' || !data.symbol) {
+    console.error(`[fetchStockQuote] unexpected response for ${symbol}:`, JSON.stringify(data));
     throw new Error('invalid symbol');
   }
 
@@ -85,9 +88,25 @@ async function buildSingleStockData(symbol, anonIp, shouldLike) {
 /**
  * Construye el array stockData para dos símbolos, usando rel_likes
  * en lugar de likes absolutos.
+ * Las llamadas al proxy se hacen de forma secuencial (no en paralelo)
+ * con una pequeña pausa entre ellas, porque el proxy de freeCodeCamp
+ * puede rechazar o fallar en solicitudes concurrentes/inmediatas
+ * desde la misma IP de servidor.
  */
 async function buildDualStockData(symbols, anonIp, shouldLike) {
-  const quotes = await Promise.all(symbols.map(fetchStockQuote));
+  const quotes = [];
+  for (let i = 0; i < symbols.length; i++) {
+    if (i > 0) {
+      // Pequeña pausa para evitar throttling del proxy en llamadas seguidas
+      await new Promise((resolve) => setTimeout(resolve, 300));
+    }
+    try {
+      const quote = await fetchStockQuote(symbols[i]);
+      quotes.push(quote);
+    } catch (err) {
+      throw new Error(`invalid symbol: ${symbols[i]}`);
+    }
+  }
 
   if (shouldLike) {
     quotes.forEach((quote) => {
